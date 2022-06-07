@@ -1,3 +1,6 @@
+// Copied from https://github.com/ava-labs/avalanche-network-runner/blob/v1.1.0/rpcpb/rpc.proto
+// without gRPC gateway dependency
+
 syntax = "proto3";
 
 option go_package = "github.com/ava-labs/avalanche-network-runner-sdk;rpcpb";
@@ -47,6 +50,18 @@ service ControlService {
   }
 
   rpc SendOutboundMessage(SendOutboundMessageRequest) returns (SendOutboundMessageResponse) {
+  }
+
+  rpc SaveSnapshot(SaveSnapshotRequest) returns (SaveSnapshotResponse) {
+  }
+
+  rpc LoadSnapshot(LoadSnapshotRequest) returns (LoadSnapshotResponse) {
+  }
+
+  rpc RemoveSnapshot(RemoveSnapshotRequest) returns (RemoveSnapshotResponse) {
+  }
+
+  rpc GetSnapshotNames(GetSnapshotNamesRequest) returns (GetSnapshotNamesResponse) {
   }
 }
 
@@ -105,14 +120,13 @@ message StartRequest {
   string exec_path                    = 1;
   optional uint32 num_nodes           = 2;
   optional string whitelisted_subnets = 3;
-  optional string log_level           = 4;
-  optional string global_node_config  = 5;
+  optional string global_node_config  = 4;
   // Used for both database and log files.
-  optional string root_data_dir = 6;
+  optional string root_data_dir = 5;
 
   // Plugin directory to load all custom VM executables.
   // Must be non-empty to install custom VMs.
-  optional string plugin_dir = 7;
+  optional string plugin_dir = 6;
 
   // The map of custom VM name to its genesis file path.
   //
@@ -123,8 +137,8 @@ message StartRequest {
   // If this field is set to none (by default), the node/network-runner
   // does not install the custom VM and does not create the subnet,
   // even if the VM binary exists on the local plugins directory.
-  map<string, string> custom_vms = 8;
-  map<string, string> custom_node_configs = 9;
+  map<string, string> custom_vms = 7;
+  map<string, string> custom_node_configs = 8;
 }
 
 message StartResponse {
@@ -215,4 +229,34 @@ message SendOutboundMessageRequest {
 
 message SendOutboundMessageResponse {
   bool sent = 1;
+}
+
+message SaveSnapshotRequest {
+  string snapshot_name = 1;
+}
+
+message SaveSnapshotResponse {
+  string snapshot_path = 1;
+}
+
+message LoadSnapshotRequest {
+  string snapshot_name = 1;
+}
+
+message LoadSnapshotResponse {
+  ClusterInfo cluster_info = 1;
+}
+
+message RemoveSnapshotRequest {
+  string snapshot_name = 1;
+}
+
+message RemoveSnapshotResponse {
+}
+
+message GetSnapshotNamesRequest {
+}
+
+message GetSnapshotNamesResponse {
+  repeated string snapshot_names = 1;
 }

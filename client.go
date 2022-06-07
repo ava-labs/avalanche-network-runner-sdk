@@ -41,6 +41,10 @@ type Client interface {
 	Stop(ctx context.Context) (*rpcpb.StopResponse, error)
 	AttachPeer(ctx context.Context, nodeName string) (*rpcpb.AttachPeerResponse, error)
 	SendOutboundMessage(ctx context.Context, nodeName string, peerID string, op uint32, msgBody []byte) (*rpcpb.SendOutboundMessageResponse, error)
+	SaveSnapshot(ctx context.Context, snapshotName string) (*rpcpb.SaveSnapshotResponse, error)
+	LoadSnapshot(ctx context.Context, snapshotName string) (*rpcpb.LoadSnapshotResponse, error)
+	RemoveSnapshot(ctx context.Context, snapshotName string) (*rpcpb.RemoveSnapshotResponse, error)
+	GetSnapshotNames(ctx context.Context) ([]string, error)
 	Close() error
 }
 
@@ -107,9 +111,6 @@ func (c *client) Start(ctx context.Context, execPath string, opts ...OpOption) (
 	}
 	if ret.whitelistedSubnets != "" {
 		req.WhitelistedSubnets = &ret.whitelistedSubnets
-	}
-	if ret.logLevel != "" {
-		req.LogLevel = &ret.logLevel
 	}
 	if ret.rootDataDir != "" {
 		req.RootDataDir = &ret.rootDataDir
@@ -213,9 +214,6 @@ func (c *client) AddNode(ctx context.Context, name string, execPath string, opts
 	if ret.whitelistedSubnets != "" {
 		req.StartRequest.WhitelistedSubnets = &ret.whitelistedSubnets
 	}
-	if ret.logLevel != "" {
-		req.StartRequest.LogLevel = &ret.logLevel
-	}
 	if ret.execPath != "" {
 		req.StartRequest.ExecPath = ret.execPath
 	}
@@ -243,9 +241,6 @@ func (c *client) RestartNode(ctx context.Context, name string, opts ...OpOption)
 	if ret.whitelistedSubnets != "" {
 		req.WhitelistedSubnets = &ret.whitelistedSubnets
 	}
-	if ret.logLevel != "" {
-		req.LogLevel = &ret.logLevel
-	}
 	if ret.rootDataDir != "" {
 		req.RootDataDir = &ret.rootDataDir
 	}
@@ -269,6 +264,30 @@ func (c *client) SendOutboundMessage(ctx context.Context, nodeName string, peerI
 	})
 }
 
+func (c *client) SaveSnapshot(ctx context.Context, snapshotName string) (*rpcpb.SaveSnapshotResponse, error) {
+	zap.L().Info("save snapshot", zap.String("snapshot-name", snapshotName))
+	return c.controlc.SaveSnapshot(ctx, &rpcpb.SaveSnapshotRequest{SnapshotName: snapshotName})
+}
+
+func (c *client) LoadSnapshot(ctx context.Context, snapshotName string) (*rpcpb.LoadSnapshotResponse, error) {
+	zap.L().Info("load snapshot", zap.String("snapshot-name", snapshotName))
+	return c.controlc.LoadSnapshot(ctx, &rpcpb.LoadSnapshotRequest{SnapshotName: snapshotName})
+}
+
+func (c *client) RemoveSnapshot(ctx context.Context, snapshotName string) (*rpcpb.RemoveSnapshotResponse, error) {
+	zap.L().Info("remove snapshot", zap.String("snapshot-name", snapshotName))
+	return c.controlc.RemoveSnapshot(ctx, &rpcpb.RemoveSnapshotRequest{SnapshotName: snapshotName})
+}
+
+func (c *client) GetSnapshotNames(ctx context.Context) ([]string, error) {
+	zap.L().Info("get snapshot names")
+	resp, err := c.controlc.GetSnapshotNames(ctx, &rpcpb.GetSnapshotNamesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.SnapshotNames, nil
+}
+
 func (c *client) Close() error {
 	c.closeOnce.Do(func() {
 		close(c.closed)
@@ -280,7 +299,6 @@ type Op struct {
 	numNodes           uint32
 	execPath           string
 	whitelistedSubnets string
-	logLevel           string
 	globalNodeConfig   string
 	rootDataDir        string
 	pluginDir          string
@@ -317,12 +335,6 @@ func WithExecPath(execPath string) OpOption {
 func WithWhitelistedSubnets(whitelistedSubnets string) OpOption {
 	return func(op *Op) {
 		op.whitelistedSubnets = whitelistedSubnets
-	}
-}
-
-func WithLogLevel(logLevel string) OpOption {
-	return func(op *Op) {
-		op.logLevel = logLevel
 	}
 }
 
