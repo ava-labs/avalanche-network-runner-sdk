@@ -2,6 +2,8 @@
 // See the file LICENSE for licensing terms.
 
 // Package avalanche-network-runner-sdk implements client.
+// Copied from https://github.com/ava-labs/avalanche-network-runner/blob/v1.3.0/client/client.go
+// except "local.DefaultNumNodes" and "logging.Logger"
 package avalanche_network_runner_sdk
 
 import (
@@ -21,6 +23,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
+
+const localDefaultNumNodes = 5
 
 type Config struct {
 	LogLevel    string
@@ -101,10 +105,8 @@ func (c *client) Ping(ctx context.Context) (*rpcpb.PingResponse, error) {
 	return c.pingc.Ping(ctx, &rpcpb.PingRequest{})
 }
 
-const DefaultNumNodes = 5
-
 func (c *client) Start(ctx context.Context, execPath string, opts ...OpOption) (*rpcpb.StartResponse, error) {
-	ret := &Op{numNodes: DefaultNumNodes}
+	ret := &Op{numNodes: localDefaultNumNodes}
 	ret.applyOpts(opts)
 
 	req := &rpcpb.StartRequest{
@@ -130,6 +132,8 @@ func (c *client) Start(ctx context.Context, execPath string, opts ...OpOption) (
 	if ret.customNodeConfigs != nil {
 		req.CustomNodeConfigs = ret.customNodeConfigs
 	}
+	req.ReassignPortsIfUsed = &ret.reassignPortsIfUsed
+	req.DynamicPorts = &ret.dynamicPorts
 
 	zap.L().Info("start")
 	return c.controlc.Start(ctx, req)
@@ -234,12 +238,12 @@ func (c *client) AddNode(ctx context.Context, name string, execPath string, opts
 	ret.applyOpts(opts)
 
 	req := &rpcpb.AddNodeRequest{
-		Name: name,
+		Name:           name,
+		ExecPath:       execPath,
+		NodeConfig:     &ret.globalNodeConfig,
+		ChainConfigs:   ret.chainConfigs,
+		UpgradeConfigs: ret.upgradeConfigs,
 	}
-	if ret.execPath != "" {
-		req.ExecPath = ret.execPath
-	}
-	req.ChainConfigs = ret.chainConfigs
 
 	zap.L().Info("add node", zap.String("name", name))
 	return c.controlc.AddNode(ctx, req)
@@ -269,12 +273,12 @@ func (c *client) RestartNode(ctx context.Context, name string, opts ...OpOption)
 }
 
 func (c *client) AttachPeer(ctx context.Context, nodeName string) (*rpcpb.AttachPeerResponse, error) {
-	zap.L().Info("attaching peer", zap.String("node-name", nodeName))
+	zap.L().Info("attaching peer", zap.String("name", nodeName))
 	return c.controlc.AttachPeer(ctx, &rpcpb.AttachPeerRequest{NodeName: nodeName})
 }
 
 func (c *client) SendOutboundMessage(ctx context.Context, nodeName string, peerID string, op uint32, msgBody []byte) (*rpcpb.SendOutboundMessageResponse, error) {
-	zap.L().Info("sending outbound message", zap.String("node-name", nodeName), zap.String("peer-id", peerID))
+	zap.L().Info("sending outbound message", zap.String("name", nodeName), zap.String("peer-ID", peerID))
 	return c.controlc.SendOutboundMessage(ctx, &rpcpb.SendOutboundMessageRequest{
 		NodeName: nodeName,
 		PeerId:   peerID,
@@ -309,6 +313,7 @@ func (c *client) LoadSnapshot(ctx context.Context, snapshotName string, opts ...
 	if ret.globalNodeConfig != "" {
 		req.GlobalNodeConfig = &ret.globalNodeConfig
 	}
+	req.ReassignPortsIfUsed = &ret.reassignPortsIfUsed
 	return c.controlc.LoadSnapshot(ctx, &req)
 }
 
@@ -334,17 +339,19 @@ func (c *client) Close() error {
 }
 
 type Op struct {
-	numNodes           uint32
-	execPath           string
-	whitelistedSubnets string
-	globalNodeConfig   string
-	rootDataDir        string
-	pluginDir          string
-	blockchainSpecs    []*rpcpb.BlockchainSpec
-	customNodeConfigs  map[string]string
-	numSubnets         uint32
-	chainConfigs       map[string]string
-	upgradeConfigs     map[string]string
+	numNodes            uint32
+	execPath            string
+	whitelistedSubnets  string
+	globalNodeConfig    string
+	rootDataDir         string
+	pluginDir           string
+	blockchainSpecs     []*rpcpb.BlockchainSpec
+	customNodeConfigs   map[string]string
+	numSubnets          uint32
+	chainConfigs        map[string]string
+	upgradeConfigs      map[string]string
+	reassignPortsIfUsed bool
+	dynamicPorts        bool
 }
 
 type OpOption func(*Op)
@@ -416,6 +423,24 @@ func WithUpgradeConfigs(upgradeConfigs map[string]string) OpOption {
 func WithCustomNodeConfigs(customNodeConfigs map[string]string) OpOption {
 	return func(op *Op) {
 		op.customNodeConfigs = customNodeConfigs
+	}
+}
+
+func WithNumSubnets(numSubnets uint32) OpOption {
+	return func(op *Op) {
+		op.numSubnets = numSubnets
+	}
+}
+
+func WithReassignPortsIfUsed(reassignPortsIfUsed bool) OpOption {
+	return func(op *Op) {
+		op.reassignPortsIfUsed = reassignPortsIfUsed
+	}
+}
+
+func WithDynamicPorts(dynamicPorts bool) OpOption {
+	return func(op *Op) {
+		op.dynamicPorts = dynamicPorts
 	}
 }
 
